@@ -1,4 +1,6 @@
 const arabicErrors: Record<string, string> = {
+  "Invalid request origin.":
+    "تعذر التحقق من عنوان الموقع. تحقق من إعداد رابط التطبيق على الخادم.",
   "Enter a learning goal, name and valid target date.":
     "أدخل اسم المساحة وهدف التعلم وتاريخًا مستهدفًا صالحًا.",
   "Learning space not found.": "مساحة التعلم غير موجودة أو غير متاحة لحسابك.",

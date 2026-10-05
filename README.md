@@ -15,6 +15,10 @@ Port 3000 serves both the frontend and API. Vite updates the frontend; `tsx watc
 
 SQLite is created in `.data/study.sqlite`. Accounts, preferences, sessions, workspaces, uploaded files, notes, tasks, exams/grades, events, study history, reviews, quiz attempts, mistakes and AI conversations persist across restarts. New feature tables migrate additively. The transactional workspace migration preserves existing courses and child records while allowing personal spaces without semesters; it verifies foreign keys. Existing accounts are **not** automatically marked as email-verified. Back up the database before migrations; use SQLite's backup API or stop the server before copying the database and its WAL files. Keep `.data` private and out of Git.
 
+## GitHub Codespaces
+
+Run `npm ci` then `npm run dev` using Node 24. Forward port 3000 in the Ports panel and open it in the browser. The server derives the exact public HTTPS origin from the trusted `CODESPACE_NAME` and `GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN` runtime variables. This origin is used for request validation, Secure cookies, Vite host authorization and development email links. It does not trust arbitrary forwarded-host headers. For other reverse proxies, explicitly set `APP_URL` to the browser's public origin and restart. An explicit `APP_URL` overrides automatic Codespaces detection.
+
 ## Email delivery
 
 Without provider credentials, during `npm run dev`, emails are saved as private JSON files in `.data/mail` (override with `MAIL_DIRECTORY`). This is a development mailbox, **not external delivery**. Open the relevant local file privately and follow its `url` to test verification or password recovery. These files contain single-use links: do not share, commit or expose them through HTTP. Browser tests force `MAIL_DELIVERY=local` and read only their separate mailbox in `/tmp/study-os-e2e-mail`. This development-only override takes precedence over email credentials and is rejected in production.

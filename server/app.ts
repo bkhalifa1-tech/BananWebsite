@@ -85,8 +85,9 @@ export function createApp(
       try {
         if (origin)
           validOrigin =
+            new URL(origin).origin === new URL(baseUrl).origin ||
             new URL(origin).origin ===
-            `${secure ? "https" : "http"}://${req.get("host")}`;
+              `${secure ? "https" : "http"}://${req.get("host")}`;
       } catch {
         validOrigin = false;
       }

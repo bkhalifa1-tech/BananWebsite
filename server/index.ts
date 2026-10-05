@@ -1,3 +1,4 @@
+import { publicAppUrl } from "./runtime";
 import { createServer as createHttpServer } from "node:http";
 import { existsSync } from "node:fs";
 import express from "express";
@@ -7,9 +8,13 @@ import { openDatabase } from "./db";
 if (existsSync(".env")) process.loadEnvFile(".env");
 const production = process.env.NODE_ENV === "production";
 const port = Number(process.env.PORT ?? 3000);
+const publicUrl = publicAppUrl(port);
 const app = createApp(
   openDatabase(process.env.DATABASE_PATH ?? ".data/study.sqlite"),
-  production || process.env.COOKIE_SECURE === "true",
+  production ||
+    process.env.COOKIE_SECURE === "true" ||
+    publicUrl.startsWith("https://"),
+  { baseUrl: publicUrl },
 );
 const httpServer = createHttpServer(app);
 if (production) {
@@ -18,7 +23,11 @@ if (production) {
 } else {
   const { createServer } = await import("vite");
   const vite = await createServer({
-    server: { middlewareMode: true, hmr: { server: httpServer } },
+    server: {
+      middlewareMode: true,
+      hmr: { server: httpServer },
+      allowedHosts: [new URL(publicUrl).hostname],
+    },
     appType: "spa",
   });
   app.use(vite.middlewares);
