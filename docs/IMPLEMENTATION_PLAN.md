@@ -1,0 +1,47 @@
+# Study OS implementation and status
+
+The checkout started empty. The stack is React 19, TypeScript, Vite, Express 5 and Node 24's SQLite driver. The Fernly video informed soft surfaces, spacing and accent consistency; the design and branding are original. The work was implemented sequentially, with lint, type checks, API tests and production builds between phases.
+
+| Phase | Implemented workflow                                                                                                                                      | Validation boundary                                                                                                       |
+| ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| 1     | Accounts, onboarding, Arabic RTL/English LTR, six themes, light/dark/system, responsive shell and reusable UI                                             | API and browser lifecycle tests                                                                                           |
+| 2     | Semesters, courses, tasks, real dashboard; email verification and password recovery                                                                       | Owner isolation, migration, persistence and browser tests; live mail needs configuration                                  |
+| 3     | Private PDF/PNG/JPEG uploads and folders, PDF text selection/pagination/zoom/download, rich notes with autosave/templates, resizable PDF/notes split view | Upload signatures/limits, sanitization, conflicting revisions, serialized saves and browser tests                         |
+| 4     | Exams, actual/target marks, weighted current grade, credit-weighted semester/cumulative GPA; 4, 4.3, 100 and custom scales                                | Known calculation fixtures, weight limits, ownership and browser persistence                                              |
+| 5     | Day/week/month calendar with events, exams, deadlines and completed sessions; 25/5, 50/10/custom focus sessions                                           | Server-clock timing, pause/resume/reload, persisted history, calendar ownership                                           |
+| 6     | Deck/card CRUD, versioned spaced reviews, six question types, saved attempts/results, topic accuracy and mistake notebook                                 | Server grading, immutable attempt snapshots, hidden answers before submission, duplicate-review protection, browser tests |
+| 7     | Total/weekly time, streak, active days, task progress, quiz accuracy, due cards, workspace distribution and topic evidence                                | Database-derived aggregates and IANA time zones; no invented mastery or exam prediction                                   |
+| 8     | Provider-independent AI tutor, conversations, PDF/note summarization, explanation, key concepts and study guides                                          | Worker-based PDF extraction and controlled provider integration tests; live OpenAI delivery is pending credentials        |
+| 9     | Independent deterministic StudyRecommendationService; deadline/exam/weak-topic/due-card priorities and time-budgeted sessions                             | Ranking/budget/isolation tests and prefilled focus browser workflow                                                       |
+| 10    | Personal spaces with goal, target date and level; shared content, tasks, practice, planner, focus, analytics and optional tutor                           | Migration/owner/cascade tests and browser persistence in both languages; no university grades or credits                  |
+
+## Shared architecture
+
+- `src/components`: dialogs, cards, progress, loading, toasts and accessible data-driven charts.
+- `src/features`: auth, semester, content, academic, planner, practice, analytics, AI, recommendations and personal spaces. Heavy PDF and rich-editor engines load on demand.
+- `src/lib`: typed HTTP boundary and shared pure grade/answer logic.
+- `server/owned.ts`: authentication, verified-email gating in production and workspace ownership.
+- Server feature modules handle validation and persistence. SQL values use parameters; identifiers come from fixed server-owned code.
+- `server/ai/provider.ts` defines a swappable AIProvider. OpenAI is the default adapter, with server-only configuration, timeout and output limits. Source extraction runs in a bounded worker; AI requests have per-user rate and concurrency limits. External responses are displayed as plain text.
+- `server/recommendations.ts` keeps ranking independent of any LLM. Reasons and plan segments come from saved data, with an exact available-time budget.
+- The legacy `courses` table is now the shared workspace root, with `kind=course|personal`. Semester courses require a semester; personal spaces require a null semester and zero credits. Personal workflows use `/spaces`; shared feature APIs retain `/courses/:id/...`. No hidden semesters or duplicate content stores are created. Academic endpoints reject personal spaces.
+
+## Persistence and migration
+
+Startup preserves existing accounts and study records. New feature tables are additive. The workspace migration rebuilds the parent table inside a transaction, preserving IDs, course records and child relations; it validates foreign keys and restores enforcement. Migration tests cover repeat execution and cascading deletes. A private backup was taken before applying this migration to the development database. Future deployments must take a SQLite backup before migrations and keep the database/WAL files on a durable private volume.
+
+Study session durations come from the server clock and exclude paused time. A running session is capped at its planned duration; completing early saves elapsed time. Abandoned sessions do not contribute to analytics. Topic accuracy is measured from submitted answers, not an assumed learning level. GPA is provisional and uses only courses with recorded grades and nonzero credits.
+
+## Explicit limits
+
+- Uploads: PDF, PNG and JPEG, up to 10 MB each. Other document/audio/video formats are future work.
+- Notes: formatting, headings, lists, links and code; nine templates, including a text outline for mind maps. Graphical mind maps, tables, embedded images, math and stylus tools are future extensions.
+- Quizzes: MCQ, true/false, short answer, fill blank, matching and problem solving using an expected final answer. Free text/final answers use exact normalized comparison; solution steps and partial credit are not evaluated. Matching compares pairs independently of serialization order.
+- Spaced repetition: versioned reviews, due dates, ease and intervals; an Again review schedules a ten-minute retry. This is a transparent initial scheduler, not a claim of a proprietary memory model.
+- AI: PDF text excerpts of up to 30 pages/30,000 characters or note excerpts. Scanned PDFs need future OCR. The UI discloses external source transmission and partial excerpts. Full-file RAG, automatic flashcard/quiz generation, translation, annotations, transcription, audio/podcast/reels/video generation, collaboration and community are later scope and have no inert controls in the product.
+
+## Public deployment boundary
+
+Real mail delivery requires `RESEND_API_KEY`, a verified `MAIL_FROM` and the public HTTPS `APP_URL`. Live AI requires `AI_API_KEY` and access to `api.openai.com`; controls stay hidden until a provider is configured. No secrets are committed. Automated tests use isolated local mail and explicit controlled AI providers, never live credentials. Real provider calls and a public deployment have not been validated in this environment.
+
+Production uses Secure HttpOnly cookies, requires verified email for every study API and refuses registration without mail delivery. Deploy behind HTTPS with durable storage, backups and suitable upstream throttling. SQLite is a single-instance architecture; multiple application instances require a shared database and limiter.
