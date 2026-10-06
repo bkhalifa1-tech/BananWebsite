@@ -1,3 +1,4 @@
+import { parseGeneratedStudy } from "./generation";
 import type { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -9,6 +10,7 @@ export function aiSchema(db: DatabaseSync) {
   db.exec(
     `CREATE TABLE IF NOT EXISTS ai_conversations(id TEXT PRIMARY KEY,user_id TEXT NOT NULL,course_id TEXT NOT NULL,title TEXT NOT NULL,created_at TEXT NOT NULL,FOREIGN KEY(course_id,user_id) REFERENCES courses(id,user_id) ON DELETE CASCADE);CREATE INDEX IF NOT EXISTS conversations_course ON ai_conversations(user_id,course_id,created_at);CREATE TABLE IF NOT EXISTS ai_messages(id TEXT PRIMARY KEY,conversation_id TEXT NOT NULL REFERENCES ai_conversations(id) ON DELETE CASCADE,role TEXT NOT NULL,content TEXT NOT NULL,source TEXT NOT NULL,created_at TEXT NOT NULL);CREATE INDEX IF NOT EXISTS messages_conversation ON ai_messages(conversation_id,created_at);`,
   );
+  db.exec(`CREATE TABLE IF NOT EXISTS ai_generations(id TEXT PRIMARY KEY,user_id TEXT NOT NULL,course_id TEXT NOT NULL,action TEXT NOT NULL,source TEXT NOT NULL,data TEXT NOT NULL,imported_id TEXT,created_at TEXT NOT NULL,FOREIGN KEY(course_id,user_id) REFERENCES courses(id,user_id) ON DELETE CASCADE);CREATE INDEX IF NOT EXISTS generated_course ON ai_generations(user_id,course_id,created_at);`);
 }
 const requestSchema = z
   .object({
@@ -17,8 +19,10 @@ const requestSchema = z
       "summarize",
       "explain",
       "key_concepts",
-      "study_guide",
+      "study_guide", "translate", "word_insight", "definitions", "formula_sheet", "mind_map", "practice_problems", "quick_review", "flashcards", "quiz", "mock_exam", "audio_script", "podcast_script", "reel_script", "video_script",
     ]),
+    selection: z.string().max(6000).default(""),
+    target_language:z.enum(["ar","en"]).optional(),
     prompt: z.string().trim().max(4000).default(""),
     language: z.enum(["ar", "en"]),
     conversation_id: z.string().uuid().nullable().default(null),
@@ -165,11 +169,12 @@ export function aiRoutes(
     limits.set(u, { ...limit, count: limit.count + 1 });
     pending.add(u);
     try {
-      if (pdf) {
+      if (pdf && !d.selection) {
         const extracted = await extractPdf(pdf);
         sourceText = extracted.text;
         truncated = extracted.truncated;
       }
+      if (d.selection && d.source) sourceText=d.selection;
       if (d.source && !sourceText.trim()) {
         res.status(422).json({
           error:
@@ -178,12 +183,20 @@ export function aiRoutes(
         return;
       }
       const language = d.language === "ar" ? "Arabic" : "English";
+      const target=d.target_language === "ar" ? "Arabic" : d.target_language === "en" ? "English" : language;
       const commands = {
         chat: d.prompt,
         summarize: "Summarize this study source.",
         explain: d.prompt || "Explain this study source clearly with examples.",
         key_concepts:
           "List the key concepts and definitions from this study source.",
+        translate:`Translate the study source into ${target}, preserving meaning and structure. Return only the translation.`,
+        word_insight:`Explain the selected word/phrase in ${target}: translation, pronunciation (phonetic text), contextual meaning, definition and an example.`,
+        definitions:"List key terms with clear definitions and examples.",formula_sheet:"Create a formula sheet with variables, units and conditions of use. Do not invent formulas.",mind_map:"Create a hierarchical mind map as a plain text outline with relationships.",practice_problems:"Create practice problems with worked solutions based on this source.",quick_review:"Create a concise last-minute review checklist based on the source.",
+        flashcards:'Return ONLY JSON: {"kind":"flashcards","title":"Title","cards":[{"front":"Question","back":"Answer","topic":"Topic"}]}. Generate five accurate study cards from the source. No markdown.',
+        quiz:'Return ONLY JSON: {"kind":"quiz","title":"Title","questions":[{"kind":"mcq","prompt":"Question","options":["A","B","C","D"],"correct_answer":"A","explanation":"Reason","topic":"Topic","source":""}]}. Generate five accurate MCQ questions; correct_answer must exactly match an option. No markdown.',
+        mock_exam:'Return ONLY JSON: {"kind":"quiz","title":"Mock exam","questions":[{"kind":"mcq","prompt":"Question","options":["A","B","C","D"],"correct_answer":"A","explanation":"Reason","topic":"Topic","source":""}]}. Generate eight mixed-difficulty MCQ exam questions from the source; answers exactly match options. No markdown.',
+        audio_script:"Write a concise spoken study summary suitable for narration, with no stage directions.",podcast_script:"Write a study podcast dialogue between a teacher and a student based on the source. Use Speaker A: and Speaker B: labels.",reel_script:"Write a 60-second study reel script with an opening hook, three key concepts and a final review question.",video_script:"Write an explainer video script with narration, scene descriptions and examples based on the source.",
         study_guide:
           "Create a study guide with key concepts and practice questions from this study source.",
       };
@@ -211,6 +224,8 @@ export function aiRoutes(
       const response = await provider.complete(messages);
       if (!response.trim() || response.length > 24000)
         throw new Error("Invalid response");
+      const generated=["flashcards","quiz","mock_exam"].includes(d.action)?parseGeneratedStudy(response,d.action):null;
+      const generatedId=generated?randomUUID():null;
       const id = d.conversation_id || randomUUID(),
         time = new Date().toISOString();
       db.exec("BEGIN");
@@ -239,6 +254,7 @@ export function aiRoutes(
           sourceName,
           time,
         );
+        if(generated)db.prepare("INSERT INTO ai_generations VALUES(?,?,?,?,?,?,NULL,?)").run(generatedId,u,c,d.action,sourceName,JSON.stringify(generated),time);
         db.exec("COMMIT");
       } catch (e) {
         db.exec("ROLLBACK");
@@ -249,6 +265,7 @@ export function aiRoutes(
         response,
         source: sourceName,
         truncated,
+        generated_id:generatedId,
       });
     } catch {
       res

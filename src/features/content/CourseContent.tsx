@@ -1,3 +1,4 @@
+import LearningStudio from "../learning/LearningStudio";
 import {
   useCallback,
   useEffect,
@@ -486,6 +487,7 @@ export default function CourseContent({
           )}
         </>
       )}
+      <LearningStudio key={courseId} courseId={courseId} language={language} materialId={material?.mime === "application/pdf" ? material.id:undefined}/>
       {dialog && (
         <Modal
           title={

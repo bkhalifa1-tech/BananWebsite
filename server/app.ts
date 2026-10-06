@@ -1,3 +1,5 @@
+import { generationRoutes } from "./ai/generation";
+import { learningRoutes } from "./learning";
 import { personalRoutes } from "./personal";
 import { recommendationRoutes } from "./recommendations";
 import { configuredAI, type AIProvider } from "./ai/provider";
@@ -321,6 +323,8 @@ export function createApp(
     "/api",
     studyRoutes(db, userFor, options.requireVerified ?? production),
   );
+  app.use("/api",generationRoutes(db,userFor,options.requireVerified ?? production));
+  app.use("/api",learningRoutes(db,userFor,options.requireVerified ?? production));
   app.use("/api", (_req, res) => {
     res.status(404).json({ error: "Endpoint not found." });
   });

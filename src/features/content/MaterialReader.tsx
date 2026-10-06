@@ -1,3 +1,4 @@
+import { PdfStudyTools } from "./PdfStudyTools";
 import { useState, useMemo } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
@@ -93,6 +94,7 @@ export function MaterialReader({
                 </p>
               }
             >
+              <PdfStudyTools materialId={material.id} page={page} language={language} onPage={setPage} onSelection={text=>window.dispatchEvent(new CustomEvent("study-selection",{detail:{materialId:material.id,text}}))}>
               <Page
                 pageNumber={page}
                 width={470}
@@ -100,6 +102,7 @@ export function MaterialReader({
                 renderAnnotationLayer={false}
                 loading={<p>{t("Loading page…", "جارٍ تحميل الصفحة…")}</p>}
               />
+              </PdfStudyTools>
             </Document>
           </div>
           {error && (

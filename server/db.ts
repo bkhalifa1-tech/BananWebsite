@@ -1,3 +1,4 @@
+import { learningSchema } from "./learning";
 import { migrateWorkspaces } from "./workspaces";
 import { aiSchema } from "./ai/routes";
 import { practiceSchema } from "./practice";
@@ -104,5 +105,6 @@ export function openDatabase(path: string) {
   plannerSchema(db);
   practiceSchema(db);
   aiSchema(db);
+  learningSchema(db);
   return db;
 }
