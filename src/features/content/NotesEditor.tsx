@@ -1,5 +1,13 @@
 import { useEffect, useState, useMemo, useRef } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
+import { TableKit } from "@tiptap/extension-table";
+import TaskList from "@tiptap/extension-task-list";
+import TaskItem from "@tiptap/extension-task-item";
+import Highlight from "@tiptap/extension-highlight";
+import { TextStyleKit } from "@tiptap/extension-text-style";
+import Image from "@tiptap/extension-image";
+import Mathematics from "@tiptap/extension-mathematics";
+import "katex/dist/katex.min.css";
 import StarterKit from "@tiptap/starter-kit";
 import {
   Bold,
@@ -30,6 +38,7 @@ export function NotesEditor({
     [link, setLink] = useState(""),
     [linkOpen, setLinkOpen] = useState(false);
   const titleRef = useRef(note.title);
+  const [insertKind,setInsertKind]=useState<"math"|"image"|null>(null),[insertValue,setInsertValue]=useState("");
   const writer = useMemo(
     () =>
       new NoteAutosave(note, (snapshot, version) =>
@@ -39,7 +48,7 @@ export function NotesEditor({
   );
   const editor = useEditor(
     {
-      extensions: [StarterKit],
+      extensions: [StarterKit, TableKit, TaskList, TaskItem.configure({nested:true}), Highlight.configure({multicolor:true}), TextStyleKit, Image, Mathematics.configure({katexOptions:{throwOnError:false,trust:false}})],
       content: note.html,
       editorProps: {
         attributes: {
@@ -163,7 +172,15 @@ export function NotesEditor({
         >
           <Link size={17} />
         </button>
+        <button className="secondary" onClick={()=>editor?.chain().focus().toggleTaskList().run()}>{t("Checklist","قائمة مهام")}</button>
+        <button className="secondary" onClick={()=>editor?.chain().focus().insertTable({rows:3,cols:3,withHeaderRow:true}).run()}>{t("Table","جدول")}</button>
+        {editor?.isActive("table") && <><button className="text-button" onClick={()=>editor.chain().focus().addRowAfter().run()}>{t("Add row","إضافة صف")}</button><button className="text-button" onClick={()=>editor.chain().focus().addColumnAfter().run()}>{t("Add column","إضافة عمود")}</button><button className="text-button" onClick={()=>editor.chain().focus().deleteTable().run()}>{t("Delete table","حذف الجدول")}</button></>}
+        <button className="secondary" onClick={()=>editor?.chain().focus().toggleHighlight().run()}>{t("Highlight","تمييز")}</button>
+        <label>{t("Text color","لون النص")}<input type="color" aria-label={t("Text color","لون النص")} defaultValue="#216348" onChange={e=>editor?.chain().focus().setColor(e.target.value).run()}/></label>
+        <button className="secondary" onClick={()=>{setInsertKind("math");setInsertValue("")}}>{t("Math / LaTeX","معادلة / LaTeX")}</button>
+        <button className="secondary" onClick={()=>{setInsertKind("image");setInsertValue("")}}>{t("Study image","صورة دراسية")}</button>
       </div>
+      {insertKind && <form className="link-form" onSubmit={e=>{e.preventDefault();if(insertKind==="math")editor?.chain().focus().insertInlineMath({latex:insertValue}).run();else if(/^\/api\/materials\/[a-f0-9-]{36}\/file$/.test(insertValue))editor?.chain().focus().setImage({src:insertValue,alt:t("Study image","صورة دراسية")}).run();else {setError(t("Use a private study image URL: /api/materials/ID/file","استخدم رابط صورة دراسية خاصة: /api/materials/ID/file"));return;}setInsertKind(null);}}><label>{insertKind==="math"?t("LaTeX expression","صيغة LaTeX"):t("Private image URL (from an uploaded image)","رابط صورة خاصة من الملفات المرفوعة")}<input required maxLength={insertKind==="math"?2000:100} value={insertValue} onChange={e=>setInsertValue(e.target.value)}/></label><button className="secondary">{t("Insert","إدراج")}</button><button type="button" className="text-button" onClick={()=>setInsertKind(null)}>{t("Cancel","إلغاء")}</button></form>}
       {linkOpen && (
         <form
           className="link-form"
