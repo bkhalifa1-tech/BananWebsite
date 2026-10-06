@@ -6,7 +6,11 @@ import { Card } from "../../components/ui";
 type Data = {
   enabled: boolean;
   conversations: { id: string; title: string }[];
-  sources: { id: string; title: string; kind: "pdf" | "note" | "document" }[];
+  sources: {
+    id: string;
+    title: string;
+    kind: "pdf" | "note" | "document" | "workspace";
+  }[];
 };
 type Message = { id: string; role: string; content: string; source: string };
 export default function Tutor({
@@ -82,8 +86,8 @@ export default function Tutor({
       if (r.truncated)
         setError(
           t(
-            "Only a source excerpt was used (up to 30 pages / 30,000 characters).",
-            "تم استخدام مقتطف فقط من المصدر (حتى 30 صفحة / 30,000 حرف).",
+            "Only a source excerpt or retrieved passages were used.",
+            "تم استخدام مقتطف من المصدر أو المقاطع المسترجعة فقط.",
           ),
         );
     } catch (e) {
@@ -157,7 +161,12 @@ export default function Tutor({
               </option>
               {data.sources.map((s) => (
                 <option key={`${s.kind}:${s.id}`} value={`${s.kind}:${s.id}`}>
-                  {s.title}
+                  {s.kind === "workspace"
+                    ? t(
+                        "All indexed study sources",
+                        "جميع مصادر الدراسة المفهرسة",
+                      )
+                    : s.title}
                 </option>
               ))}
             </select>

@@ -1,14 +1,234 @@
-import {useEffect,useRef,useState} from 'react';
-export function StudyVideo({audioId,text,language}:{audioId:string;text:string;language:'ar'|'en'}){
- const t=(e:string,a:string)=>language==='ar'?a:e,[recording,setRecording]=useState(false),[url,setUrl]=useState(''),[error,setError]=useState(''),[vertical,setVertical]=useState(true),[seconds,setSeconds]=useState(30),cleanup=useRef<()=>void>(()=>{});
- useEffect(()=>()=>cleanup.current(),[]);useEffect(()=>()=>{if(url)URL.revokeObjectURL(url);},[url]);
- async function create(){setError('');setUrl('');setRecording(true);let ctx:AudioContext|undefined,stream:MediaStream|undefined,frame=0,timer:ReturnType<typeof setTimeout>|undefined;const audio=new Audio(`/api/generated-audio/${audioId}/file`);let finished=false;
- const stop=()=>{if(finished)return;finished=true;cancelAnimationFrame(frame);if(timer)clearTimeout(timer);audio.pause();stream?.getTracks().forEach(t=>t.stop());void ctx?.close();setRecording(false);};cleanup.current=stop;
- try{const mime=['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'].find(m=>MediaRecorder.isTypeSupported(m));if(!mime)throw new Error(t('This browser cannot export WebM video.','هذا المتصفح لا يدعم تصدير فيديو WebM.'));const canvas=document.createElement('canvas');canvas.width=vertical?720:1280;canvas.height=vertical?1280:720;const g=canvas.getContext('2d');if(!g)throw new Error('Canvas unavailable');ctx=new AudioContext();await ctx.resume();const destination=ctx.createMediaStreamDestination(),source=ctx.createMediaElementSource(audio);source.connect(destination);source.connect(ctx.destination);stream=canvas.captureStream(24);destination.stream.getAudioTracks().forEach(track=>stream!.addTrack(track));const recorder=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:1_500_000}),chunks:Blob[]=[];
- recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data);};recorder.onerror=()=>{setError(t('Video export failed.','تعذر تصدير الفيديو.'));stop();};recorder.onstop=()=>{if(chunks.length)setUrl(URL.createObjectURL(new Blob(chunks,{type:'video/webm'})));stop();};const pages=text.match(/[\s\S]{1,350}(?:\s|$)/g)||[text],started=performance.now();
- function draw(){if(finished)return;const elapsed=(performance.now()-started)/1000,index=Math.min(pages.length-1,Math.floor(elapsed/seconds*pages.length));g!.fillStyle='#123d2d';g!.fillRect(0,0,canvas.width,canvas.height);g!.fillStyle='#c8dcb2';g!.font='26px sans-serif';g!.textAlign='center';g!.fillText(t('Study OS · Quick review','Study OS · مراجعة سريعة'),canvas.width/2,85);g!.fillStyle='#ffffff';g!.font='32px sans-serif';g!.direction=language==='ar'?'rtl':'ltr';const words=pages[index].trim().split(/\s+/),lines:string[]=[];let line='';for(const word of words){if(g!.measureText(line+' '+word).width>canvas.width-100){lines.push(line);line=word;}else line+=(line?' ':'')+word;}if(line)lines.push(line);lines.slice(0,vertical?20:10).forEach((line,i)=>g!.fillText(line,canvas.width/2,180+i*46));g!.fillStyle='#c8dcb2';g!.fillRect(0,canvas.height-10,Math.min(1,elapsed/seconds)*canvas.width,10);frame=requestAnimationFrame(draw);}
- draw();recorder.start(500);await audio.play();timer=setTimeout(()=>{if(recorder.state==='recording')recorder.stop();},seconds*1000);cleanup.current=()=>{if(recorder.state==='recording')recorder.stop();stop();};
- }catch(e){setError(e instanceof Error?e.message:t('Video export failed.','تعذر تصدير الفيديو.'));stop();}}
- const supported=typeof MediaRecorder!=='undefined'&&typeof HTMLCanvasElement.prototype.captureStream==='function';
- return <div className="study-video-export">{supported?<><label>{t('Video format','تنسيق الفيديو')}<select disabled={recording} value={vertical?'reel':'video'} onChange={e=>setVertical(e.target.value==='reel')}><option value="reel">{t('Vertical study reel','مقطع دراسي عمودي')}</option><option value="video">{t('Landscape explainer','فيديو توضيحي أفقي')}</option></select></label><label>{t('Duration (seconds)','المدة (ثوانٍ)')}<input type="number" min={5} max={120} disabled={recording} value={seconds} onChange={e=>setSeconds(Math.max(5,Math.min(120,Number(e.target.value)||5)))}/></label><button className="secondary" disabled={recording} onClick={()=>void create()}>{recording?t('Recording video…','جارٍ تسجيل الفيديو…'):t('Export narrated study video','تصدير فيديو دراسي مقروء')}</button>{recording&&<button className="text-button" onClick={()=>cleanup.current()}>{t('Stop','إيقاف')}</button>}<p className="field-hint">{t('Creates a text-slide video with generated narration in this browser. Keep this tab open until the download is ready.','ينشئ فيديو بشرائح نصية وصوت مولد داخل المتصفح. اترك التبويب مفتوحًا حتى يجهز التنزيل.')}</p></>:<p>{t('Video export requires a browser that supports MediaRecorder and canvas capture.','تصدير الفيديو يحتاج متصفحًا يدعم تسجيل الوسائط والتقاط اللوحة.')}</p>}{error&&<p className="error-box" role="alert">{error}</p>}{url&&<a className="secondary" href={url} download="study-video.webm">{t('Download video','تنزيل الفيديو')}</a>}</div>;
+import { useEffect, useRef, useState } from "react";
+export function StudyVideo({
+  audioId,
+  text,
+  language,
+}: {
+  audioId: string;
+  text: string;
+  language: "ar" | "en";
+}) {
+  const t = (e: string, a: string) => (language === "ar" ? a : e),
+    [recording, setRecording] = useState(false),
+    [url, setUrl] = useState(""),
+    [error, setError] = useState(""),
+    [vertical, setVertical] = useState(true),
+    [seconds, setSeconds] = useState(30),
+    cleanup = useRef<() => void>(() => {});
+  useEffect(() => () => cleanup.current(), []);
+  useEffect(
+    () => () => {
+      if (url) URL.revokeObjectURL(url);
+    },
+    [url],
+  );
+  async function create() {
+    setError("");
+    setUrl("");
+    setRecording(true);
+    let ctx: AudioContext | undefined,
+      stream: MediaStream | undefined,
+      frame = 0,
+      timer: ReturnType<typeof setTimeout> | undefined;
+    const audio = new Audio(`/api/generated-audio/${audioId}/file`);
+    let finished = false;
+    const stop = () => {
+      if (finished) return;
+      finished = true;
+      cancelAnimationFrame(frame);
+      if (timer) clearTimeout(timer);
+      audio.pause();
+      stream?.getTracks().forEach((t) => t.stop());
+      void ctx?.close();
+      setRecording(false);
+    };
+    cleanup.current = stop;
+    try {
+      const mime = [
+        "video/webm;codecs=vp9,opus",
+        "video/webm;codecs=vp8,opus",
+        "video/webm",
+      ].find((m) => MediaRecorder.isTypeSupported(m));
+      if (!mime)
+        throw new Error(
+          t(
+            "This browser cannot export WebM video.",
+            "هذا المتصفح لا يدعم تصدير فيديو WebM.",
+          ),
+        );
+      const canvas = document.createElement("canvas");
+      canvas.width = vertical ? 720 : 1280;
+      canvas.height = vertical ? 1280 : 720;
+      const g = canvas.getContext("2d");
+      if (!g) throw new Error("Canvas unavailable");
+      ctx = new AudioContext();
+      await ctx.resume();
+      const destination = ctx.createMediaStreamDestination(),
+        source = ctx.createMediaElementSource(audio);
+      source.connect(destination);
+      source.connect(ctx.destination);
+      stream = canvas.captureStream(24);
+      destination.stream
+        .getAudioTracks()
+        .forEach((track) => stream!.addTrack(track));
+      const recorder = new MediaRecorder(stream, {
+          mimeType: mime,
+          videoBitsPerSecond: 1_500_000,
+        }),
+        chunks: Blob[] = [];
+      recorder.ondataavailable = (e) => {
+        if (e.data.size) chunks.push(e.data);
+      };
+      recorder.onerror = () => {
+        setError(t("Video export failed.", "تعذر تصدير الفيديو."));
+        stop();
+      };
+      recorder.onstop = () => {
+        if (chunks.length)
+          setUrl(URL.createObjectURL(new Blob(chunks, { type: "video/webm" })));
+        stop();
+      };
+      const pages = text.match(/[\s\S]{1,350}(?:\s|$)/g) || [text],
+        started = performance.now();
+      function draw() {
+        if (finished) return;
+        const elapsed = (performance.now() - started) / 1000,
+          index = Math.min(
+            pages.length - 1,
+            Math.floor((elapsed / seconds) * pages.length),
+          );
+        g!.fillStyle = "#123d2d";
+        g!.fillRect(0, 0, canvas.width, canvas.height);
+        g!.fillStyle = "#c8dcb2";
+        g!.font = "26px sans-serif";
+        g!.textAlign = "center";
+        g!.fillText(
+          t("Study OS · Quick review", "Study OS · مراجعة سريعة"),
+          canvas.width / 2,
+          85,
+        );
+        g!.fillStyle = "#ffffff";
+        g!.font = "32px sans-serif";
+        g!.direction = language === "ar" ? "rtl" : "ltr";
+        const words = pages[index].trim().split(/\s+/),
+          lines: string[] = [];
+        let line = "";
+        for (const word of words) {
+          if (g!.measureText(line + " " + word).width > canvas.width - 100) {
+            lines.push(line);
+            line = word;
+          } else line += (line ? " " : "") + word;
+        }
+        if (line) lines.push(line);
+        lines
+          .slice(0, vertical ? 20 : 10)
+          .forEach((line, i) =>
+            g!.fillText(line, canvas.width / 2, 180 + i * 46),
+          );
+        g!.fillStyle = "#c8dcb2";
+        g!.fillRect(
+          0,
+          canvas.height - 10,
+          Math.min(1, elapsed / seconds) * canvas.width,
+          10,
+        );
+        frame = requestAnimationFrame(draw);
+      }
+      draw();
+      recorder.start(500);
+      await audio.play();
+      timer = setTimeout(() => {
+        if (recorder.state === "recording") recorder.stop();
+      }, seconds * 1000);
+      cleanup.current = () => {
+        if (recorder.state === "recording") recorder.stop();
+        stop();
+      };
+    } catch (e) {
+      setError(
+        e instanceof Error
+          ? e.message
+          : t("Video export failed.", "تعذر تصدير الفيديو."),
+      );
+      stop();
+    }
+  }
+  const supported =
+    typeof MediaRecorder !== "undefined" &&
+    typeof HTMLCanvasElement.prototype.captureStream === "function";
+  return (
+    <div className="study-video-export">
+      {supported ? (
+        <>
+          <label>
+            {t("Video format", "تنسيق الفيديو")}
+            <select
+              disabled={recording}
+              value={vertical ? "reel" : "video"}
+              onChange={(e) => setVertical(e.target.value === "reel")}
+            >
+              <option value="reel">
+                {t("Vertical study reel", "مقطع دراسي عمودي")}
+              </option>
+              <option value="video">
+                {t("Landscape explainer", "فيديو توضيحي أفقي")}
+              </option>
+            </select>
+          </label>
+          <label>
+            {t("Duration (seconds)", "المدة (ثوانٍ)")}
+            <input
+              type="number"
+              min={5}
+              max={120}
+              disabled={recording}
+              value={seconds}
+              onChange={(e) =>
+                setSeconds(
+                  Math.max(5, Math.min(120, Number(e.target.value) || 5)),
+                )
+              }
+            />
+          </label>
+          <button
+            className="secondary"
+            disabled={recording}
+            onClick={() => void create()}
+          >
+            {recording
+              ? t("Recording video…", "جارٍ تسجيل الفيديو…")
+              : t("Export narrated study video", "تصدير فيديو دراسي مقروء")}
+          </button>
+          {recording && (
+            <button className="text-button" onClick={() => cleanup.current()}>
+              {t("Stop", "إيقاف")}
+            </button>
+          )}
+          <p className="field-hint">
+            {t(
+              "Creates a text-slide video with generated narration in this browser. Keep this tab open until the download is ready.",
+              "ينشئ فيديو بشرائح نصية وصوت مولد داخل المتصفح. اترك التبويب مفتوحًا حتى يجهز التنزيل.",
+            )}
+          </p>
+        </>
+      ) : (
+        <p>
+          {t(
+            "Video export requires a browser that supports MediaRecorder and canvas capture.",
+            "تصدير الفيديو يحتاج متصفحًا يدعم تسجيل الوسائط والتقاط اللوحة.",
+          )}
+        </p>
+      )}
+      {error && (
+        <p className="error-box" role="alert">
+          {error}
+        </p>
+      )}
+      {url && (
+        <a className="secondary" href={url} download="study-video.webm">
+          {t("Download video", "تنزيل الفيديو")}
+        </a>
+      )}
+    </div>
+  );
 }

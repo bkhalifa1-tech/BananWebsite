@@ -33,7 +33,7 @@ export default function CourseAcademics({
   courseId: string;
   language: "ar" | "en";
 }) {
-  const [target,setTarget]=useState(90);
+  const [target, setTarget] = useState(90);
   const t = (e: string, a: string) => (language === "ar" ? a : e);
   const [data, setData] = useState<AcademicData | null>(null),
     [error, setError] = useState(""),
@@ -160,10 +160,47 @@ export default function CourseAcademics({
               </div>
             </div>
             <div className="grade-target-calculator">
-              <h3>{t("What grade do I need?","ما الدرجة التي أحتاجها؟")}</h3>
-              <label>{t("Target final course grade (%)","الدرجة النهائية المستهدفة للمساق (%)")}<input type="number" min={0} max={100} value={target} onChange={e=>setTarget(Number(e.target.value))}/></label>
-              <p>{(()=>{const needed=requiredRemainingGrade(data.summary,target);return needed===null?t("All grading weight is recorded.","تم تسجيل كامل وزن التقييم."):needed>100?t("This target is unreachable with the remaining weight.","لا يمكن بلوغ هذا الهدف بالوزن المتبقي."):needed<=0?t("The target is already secured by recorded marks.","الدرجات المسجلة تكفي لتحقيق الهدف."):`${t("Required average on all remaining weight","المتوسط المطلوب في كامل الوزن المتبقي")}: ${needed.toFixed(1)}%`;})()}</p>
-              <small>{t("Assumes the final grading weights total 100%; unconfigured weight is included.","يفترض أن مجموع أوزان التقييم النهائي 100%؛ يشمل الوزن الذي لم تضفه بعد.")}</small>
+              <h3>{t("What grade do I need?", "ما الدرجة التي أحتاجها؟")}</h3>
+              <label>
+                {t(
+                  "Target final course grade (%)",
+                  "الدرجة النهائية المستهدفة للمساق (%)",
+                )}
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={target}
+                  onChange={(e) => setTarget(Number(e.target.value))}
+                />
+              </label>
+              <p>
+                {(() => {
+                  const needed = requiredRemainingGrade(data.summary, target);
+                  return needed === null
+                    ? t(
+                        "All grading weight is recorded.",
+                        "تم تسجيل كامل وزن التقييم.",
+                      )
+                    : needed > 100
+                      ? t(
+                          "This target is unreachable with the remaining weight.",
+                          "لا يمكن بلوغ هذا الهدف بالوزن المتبقي.",
+                        )
+                      : needed <= 0
+                        ? t(
+                            "The target is already secured by recorded marks.",
+                            "الدرجات المسجلة تكفي لتحقيق الهدف.",
+                          )
+                        : `${t("Required average on all remaining weight", "المتوسط المطلوب في كامل الوزن المتبقي")}: ${needed.toFixed(1)}%`;
+                })()}
+              </p>
+              <small>
+                {t(
+                  "Assumes the final grading weights total 100%; unconfigured weight is included.",
+                  "يفترض أن مجموع أوزان التقييم النهائي 100%؛ يشمل الوزن الذي لم تضفه بعد.",
+                )}
+              </small>
             </div>
             <div className="section-title inner-heading">
               <h3>{t("Exams", "الامتحانات")}</h3>

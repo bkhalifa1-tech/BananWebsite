@@ -25,16 +25,58 @@ export const cleanNote = (html: string) =>
       "code",
       "hr",
       "br",
-      "a", "table", "tbody", "thead", "tr", "th", "td", "label", "input", "div", "span", "mark", "img",
+      "a",
+      "table",
+      "tbody",
+      "thead",
+      "tr",
+      "th",
+      "td",
+      "label",
+      "input",
+      "div",
+      "span",
+      "mark",
+      "img",
     ],
-    allowedAttributes: { a: ["href", "target", "rel"],
-      ul:["data-type"],li:["data-type","data-checked"],input:["type","checked","disabled"],
-      th:["colspan","rowspan"],td:["colspan","rowspan"],
-      span:["style","data-type","data-latex"],div:["data-type","data-latex"],mark:["data-color","style"],img:["src","alt","title"] },
-    allowedStyles: { span:{color:[/^#[a-f0-9]{6}$/i]},mark:{'background-color':[/^#[a-f0-9]{6}$/i]} },
-    exclusiveFilter: frame => (frame.tag === "img" && !/^\/api\/materials\/[a-f0-9-]{36}\/file$/.test(frame.attribs.src||"")) || (frame.tag === "input" && frame.attribs.type !== "checkbox"),
+    allowedAttributes: {
+      a: ["href", "target", "rel"],
+      ul: ["data-type"],
+      li: ["data-type", "data-checked"],
+      input: ["type", "checked", "disabled"],
+      th: ["colspan", "rowspan"],
+      td: ["colspan", "rowspan"],
+      span: ["style", "data-type", "data-latex"],
+      div: ["data-type", "data-latex"],
+      mark: ["data-color", "style"],
+      img: ["src", "alt", "title"],
+    },
+    allowedStyles: {
+      span: {
+        color: [
+          /^#[a-f0-9]{6}$/i,
+          /^rgb\(\s*\d{1,3},\s*\d{1,3},\s*\d{1,3}\s*\)$/,
+        ],
+      },
+      mark: {
+        "background-color": [
+          /^#[a-f0-9]{6}$/i,
+          /^rgb\(\s*\d{1,3},\s*\d{1,3},\s*\d{1,3}\s*\)$/,
+        ],
+      },
+    },
+    exclusiveFilter: (frame) =>
+      (frame.tag === "img" &&
+        !/^\/api\/materials\/[a-f0-9-]{36}\/file$/.test(
+          frame.attribs.src || "",
+        )) ||
+      (frame.tag === "input" && frame.attribs.type !== "checkbox"),
     allowedSchemes: ["https", "http", "mailto"],
-    transformTags: { input:sanitizeHtml.simpleTransform("input",{type:"checkbox",disabled:"disabled"}),
+    transformTags: {
+      input: sanitizeHtml.simpleTransform("input", {
+        type: "checkbox",
+        disabled: "disabled",
+      }),
       a: sanitizeHtml.simpleTransform("a", {
         rel: "noopener noreferrer",
         target: "_blank",
@@ -128,67 +170,91 @@ export function contentRoutes(
     }
     res.status(204).end();
   });
-  router.post("/courses/:id/materials", upload.single("file"), async (req, res) => {
-    const file = req.file;
-    if (!file) {
-      res.status(400).json({ error: "Choose a supported study file." });
-      return;
-    }
-    let inspected;try{inspected=await inspectFile(file.buffer,file.originalname);}catch{res.status(415).json({error:"This document could not be safely extracted."});return;}
-    const mime = inspected?.mime;
-    if (!mime) {
+  router.post(
+    "/courses/:id/materials",
+    upload.single("file"),
+    async (req, res) => {
+      const file = req.file;
+      if (!file) {
+        res.status(400).json({ error: "Choose a supported study file." });
+        return;
+      }
+      let inspected;
+      try {
+        inspected = await inspectFile(file.buffer, file.originalname);
+      } catch {
+        res
+          .status(415)
+          .json({ error: "This document could not be safely extracted." });
+        return;
+      }
+      const mime = inspected?.mime;
+      if (!mime) {
+        res
+          .status(415)
+          .json({
+            error:
+              "Supported files: PDF, PNG, JPEG, DOCX, PPTX, MP3, WAV, OGG, M4A, MP4 and WebM.",
+          });
+        return;
+      }
+      const folder =
+        typeof req.body.folder_id === "string" && req.body.folder_id
+          ? req.body.folder_id
+          : null;
+      if (
+        folder &&
+        !db
+          .prepare(
+            "SELECT id FROM folders WHERE id=? AND course_id=? AND user_id=?",
+          )
+          .get(folder, res.locals.courseId, res.locals.userId)
+      ) {
+        res.status(400).json({ error: "Invalid folder." });
+        return;
+      }
+      const name =
+        Array.from(file.originalname)
+          .map((char) =>
+            char.charCodeAt(0) < 32 ||
+            char.charCodeAt(0) === 127 ||
+            char === "/" ||
+            char === "\\"
+              ? "_"
+              : char,
+          )
+          .join("")
+          .normalize("NFC")
+          .slice(0, 160) || "Material";
+      const id = randomUUID();
+      db.prepare(
+        "INSERT INTO materials(id,user_id,course_id,folder_id,name,mime,size,data,extracted_text) VALUES(?,?,?,?,?,?,?,?,?)",
+      ).run(
+        id,
+        res.locals.userId,
+        res.locals.courseId,
+        folder,
+        name,
+        mime,
+        file.size,
+        file.buffer,
+        inspected?.text || "",
+      );
       res
-        .status(415)
-        .json({ error: "Supported files: PDF, PNG, JPEG, DOCX, PPTX, MP3, WAV, OGG, M4A, MP4 and WebM." });
+        .status(201)
+        .json({ id, name, mime, size: file.size, folder_id: folder });
+    },
+  );
+  router.get("/materials/:id/text", (req, res) => {
+    const f = db
+      .prepare("SELECT extracted_text FROM materials WHERE id=? AND user_id=?")
+      .get(req.params.id, res.locals.userId);
+    if (!f) {
+      res.status(404).json({ error: "Material not found." });
       return;
     }
-    const folder =
-      typeof req.body.folder_id === "string" && req.body.folder_id
-        ? req.body.folder_id
-        : null;
-    if (
-      folder &&
-      !db
-        .prepare(
-          "SELECT id FROM folders WHERE id=? AND course_id=? AND user_id=?",
-        )
-        .get(folder, res.locals.courseId, res.locals.userId)
-    ) {
-      res.status(400).json({ error: "Invalid folder." });
-      return;
-    }
-    const name =
-      Array.from(file.originalname)
-        .map((char) =>
-          char.charCodeAt(0) < 32 ||
-          char.charCodeAt(0) === 127 ||
-          char === "/" ||
-          char === "\\"
-            ? "_"
-            : char,
-        )
-        .join("")
-        .normalize("NFC")
-        .slice(0, 160) || "Material";
-    const id = randomUUID();
-    db.prepare(
-      "INSERT INTO materials(id,user_id,course_id,folder_id,name,mime,size,data,extracted_text) VALUES(?,?,?,?,?,?,?,?,?)",
-    ).run(
-      id,
-      res.locals.userId,
-      res.locals.courseId,
-      folder,
-      name,
-      mime,
-      file.size,
-      file.buffer,
-      inspected?.text||"",
-    );
-    res
-      .status(201)
-      .json({ id, name, mime, size: file.size, folder_id: folder });
+    res.json({ text: f.extracted_text });
   });
-  router.get("/materials/:id/text",(req,res)=>{const f=db.prepare("SELECT extracted_text FROM materials WHERE id=? AND user_id=?").get(req.params.id,res.locals.userId);if(!f){res.status(404).json({error:"Material not found."});return;}res.json({text:f.extracted_text});});
   router.get("/materials/:id/file", (req, res) => {
     const file = db
       .prepare("SELECT name,mime,data FROM materials WHERE id=? AND user_id=?")
@@ -203,9 +269,29 @@ export function contentRoutes(
       "Content-Security-Policy": "default-src 'none'; sandbox",
       "Cross-Origin-Resource-Policy": "same-origin",
     });
-    const data=Buffer.from(file.data as Uint8Array);res.set("Accept-Ranges","bytes");
-    const range=req.get("range");
-    if(range){const match=/^bytes=(\d+)-(\d*)$/.exec(range);if(!match){res.status(416).set("Content-Range",`bytes */${data.length}`).end();return;}const start=Number(match[1]),end=match[2]?Math.min(Number(match[2]),data.length-1):data.length-1;if(start>=data.length||end<start){res.status(416).set("Content-Range",`bytes */${data.length}`).end();return;}res.status(206).set("Content-Range",`bytes ${start}-${end}/${data.length}`).send(data.subarray(start,end+1));return;}
+    const data = Buffer.from(file.data as Uint8Array);
+    res.set("Accept-Ranges", "bytes");
+    const range = req.get("range");
+    if (range) {
+      const match = /^bytes=(\d+)-(\d*)$/.exec(range);
+      if (!match) {
+        res.status(416).set("Content-Range", `bytes */${data.length}`).end();
+        return;
+      }
+      const start = Number(match[1]),
+        end = match[2]
+          ? Math.min(Number(match[2]), data.length - 1)
+          : data.length - 1;
+      if (start >= data.length || end < start) {
+        res.status(416).set("Content-Range", `bytes */${data.length}`).end();
+        return;
+      }
+      res
+        .status(206)
+        .set("Content-Range", `bytes ${start}-${end}/${data.length}`)
+        .send(data.subarray(start, end + 1));
+      return;
+    }
     res.send(data);
   });
   router.delete("/materials/:id", (req, res) => {

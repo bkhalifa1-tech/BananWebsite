@@ -1,4 +1,26 @@
 const arabicErrors: Record<string, string> = {
+  "This shared note changed. Reload before saving.":
+    "عدّل عضو آخر هذه الملاحظة. حدّث الملاحظات قبل الحفظ لتجنب استبدال تعديله.",
+  "This group is read-only for you.": "صلاحيتك في هذه المجموعة للقراءة فقط.",
+  "Enter a valid annotation.":
+    "حدد نصًا أو ارسم مسارًا صالحًا أو أدخل تعليقًا.",
+  "Enter a word and its meaning.": "أدخل الكلمة ومعناها.",
+  "A source is already being indexed.": "يوجد مصدر قيد الفهرسة. انتظر اكتماله.",
+  "This PDF could not be indexed.":
+    "تعذرت فهرسة PDF. تحقق من أن الملف صالح وقابل لاستخراج النص.",
+  "A translation is already running.":
+    "توجد ترجمة قيد التنفيذ. انتظر اكتمالها.",
+  "Translation limit reached. Try again later.":
+    "وصلت إلى حد ترجمة المستندات. حاول لاحقًا.",
+  "Index the PDF first; document translation supports text up to 120,000 characters.":
+    "افهرس PDF أولًا. تدعم ترجمة المستندات نصًا حتى 120,000 حرف.",
+  "Enter study content and confirm sharing.":
+    "أدخل محتوى دراسيًا وأكد الموافقة على مشاركته.",
+  "AI media is not configured.": "خدمات الصوت والصور غير مفعلة بعد.",
+  "This document could not be safely extracted.":
+    "تعذر استخراج هذا المستند ضمن حدود المعالجة المسموحة.",
+  "Supported files: PDF, PNG, JPEG, DOCX, PPTX, MP3, WAV, OGG, M4A, MP4 and WebM.":
+    "الملفات المدعومة: PDF وصور PNG وJPEG ومستندات DOCX وPPTX وصوت MP3 وWAV وOGG وM4A وفيديو MP4 وWebM.",
   "Invalid request origin.":
     "تعذر التحقق من عنوان الموقع. تحقق من إعداد رابط التطبيق على الخادم.",
   "Enter a learning goal, name and valid target date.":

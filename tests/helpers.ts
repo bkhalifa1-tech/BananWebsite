@@ -18,6 +18,7 @@ export async function testServer(aiProvider: AIProvider | null = null) {
     method = "GET",
     body?: unknown,
     cookie = "",
+    extraHeaders: Record<string, string> = {},
   ) {
     const multipart = body instanceof FormData;
     return fetch(`http://127.0.0.1:${port}/api${path}`, {
@@ -26,6 +27,7 @@ export async function testServer(aiProvider: AIProvider | null = null) {
         "X-Study-Client": "web",
         cookie,
         ...(!multipart ? { "Content-Type": "application/json" } : {}),
+        ...extraHeaders,
       },
       body:
         body === undefined

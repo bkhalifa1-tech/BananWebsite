@@ -1,3 +1,4 @@
+import { retrieveStudyText } from "./retrieval";
 import { parseGeneratedStudy } from "./generation";
 import type { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
@@ -10,7 +11,9 @@ export function aiSchema(db: DatabaseSync) {
   db.exec(
     `CREATE TABLE IF NOT EXISTS ai_conversations(id TEXT PRIMARY KEY,user_id TEXT NOT NULL,course_id TEXT NOT NULL,title TEXT NOT NULL,created_at TEXT NOT NULL,FOREIGN KEY(course_id,user_id) REFERENCES courses(id,user_id) ON DELETE CASCADE);CREATE INDEX IF NOT EXISTS conversations_course ON ai_conversations(user_id,course_id,created_at);CREATE TABLE IF NOT EXISTS ai_messages(id TEXT PRIMARY KEY,conversation_id TEXT NOT NULL REFERENCES ai_conversations(id) ON DELETE CASCADE,role TEXT NOT NULL,content TEXT NOT NULL,source TEXT NOT NULL,created_at TEXT NOT NULL);CREATE INDEX IF NOT EXISTS messages_conversation ON ai_messages(conversation_id,created_at);`,
   );
-  db.exec(`CREATE TABLE IF NOT EXISTS ai_generations(id TEXT PRIMARY KEY,user_id TEXT NOT NULL,course_id TEXT NOT NULL,action TEXT NOT NULL,source TEXT NOT NULL,data TEXT NOT NULL,imported_id TEXT,created_at TEXT NOT NULL,FOREIGN KEY(course_id,user_id) REFERENCES courses(id,user_id) ON DELETE CASCADE);CREATE INDEX IF NOT EXISTS generated_course ON ai_generations(user_id,course_id,created_at);`);
+  db.exec(
+    `CREATE TABLE IF NOT EXISTS ai_generations(id TEXT PRIMARY KEY,user_id TEXT NOT NULL,course_id TEXT NOT NULL,action TEXT NOT NULL,source TEXT NOT NULL,data TEXT NOT NULL,imported_id TEXT,created_at TEXT NOT NULL,FOREIGN KEY(course_id,user_id) REFERENCES courses(id,user_id) ON DELETE CASCADE);CREATE INDEX IF NOT EXISTS generated_course ON ai_generations(user_id,course_id,created_at);`,
+  );
 }
 const requestSchema = z
   .object({
@@ -19,15 +22,32 @@ const requestSchema = z
       "summarize",
       "explain",
       "key_concepts",
-      "study_guide", "translate", "word_insight", "definitions", "formula_sheet", "mind_map", "practice_problems", "quick_review", "flashcards", "quiz", "mock_exam", "audio_script", "podcast_script", "reel_script", "video_script",
+      "study_guide",
+      "translate",
+      "word_insight",
+      "definitions",
+      "formula_sheet",
+      "mind_map",
+      "practice_problems",
+      "quick_review",
+      "flashcards",
+      "quiz",
+      "mock_exam",
+      "audio_script",
+      "podcast_script",
+      "reel_script",
+      "video_script",
     ]),
     selection: z.string().max(6000).default(""),
-    target_language:z.enum(["ar","en"]).optional(),
+    target_language: z.enum(["ar", "en"]).optional(),
     prompt: z.string().trim().max(4000).default(""),
     language: z.enum(["ar", "en"]),
     conversation_id: z.string().uuid().nullable().default(null),
     source: z
-      .object({ kind: z.enum(["pdf", "note", "document"]), id: z.string().uuid() })
+      .object({
+        kind: z.enum(["pdf", "note", "document", "workspace"]),
+        id: z.string().uuid(),
+      })
       .strict()
       .nullable()
       .default(null),
@@ -52,6 +72,11 @@ export function aiRoutes(
         )
         .all(res.locals.userId, res.locals.courseId),
       sources: [
+        {
+          id: res.locals.courseId,
+          title: "All indexed study sources",
+          kind: "workspace",
+        },
         ...db
           .prepare(
             "SELECT id,name AS title,'pdf' AS kind FROM materials WHERE course_id=? AND user_id=? AND mime='application/pdf'",
@@ -62,7 +87,11 @@ export function aiRoutes(
             "SELECT id,title,'note' AS kind FROM notes WHERE course_id=? AND user_id=?",
           )
           .all(res.locals.courseId, res.locals.userId),
-        ...db.prepare("SELECT id,name AS title,'document' AS kind FROM materials WHERE course_id=? AND user_id=? AND mime!='application/pdf' AND extracted_text!=''").all(res.locals.courseId,res.locals.userId),
+        ...db
+          .prepare(
+            "SELECT id,name AS title,'document' AS kind FROM materials WHERE course_id=? AND user_id=? AND mime!='application/pdf' AND extracted_text!=''",
+          )
+          .all(res.locals.courseId, res.locals.userId),
       ],
     }),
   );
@@ -123,19 +152,54 @@ export function aiRoutes(
     // Ownership is checked before parsing or making a paid external request.
     let pdf: Uint8Array | undefined;
     if (d.source) {
-      if (d.source.kind !== "note") {
+      if (d.source.kind === "workspace") {
+        if (d.source.id !== c) {
+          res.status(404).json({ error: "Source not found." });
+          return;
+        }
+        const texts = db
+          .prepare(
+            "SELECT name AS title,extracted_text AS text FROM materials WHERE course_id=? AND user_id=? AND extracted_text!='' UNION ALL SELECT title,html AS text FROM notes WHERE course_id=? AND user_id=? LIMIT 100",
+          )
+          .all(c, u, c, u);
+        sourceName = "Indexed workspace sources";
+        const raw = texts
+          .map(
+            (s) =>
+              `[Source: ${String(s.title).replace(/[[\]\n]/g, " ")}]\n${sanitizeHtml(String(s.text), { allowedTags: [], allowedAttributes: {} })}`,
+          )
+          .join("\n")
+          .slice(0, 300000);
+        const retrieved = retrieveStudyText(raw, d.prompt || d.selection);
+        sourceText = retrieved.text;
+        truncated = retrieved.truncated;
+      } else if (d.source.kind !== "note") {
         const file = db
           .prepare(
             "SELECT name,data,mime,extracted_text FROM materials WHERE id=? AND user_id=? AND course_id=?",
           )
           .get(d.source.id, u, c);
-        if (!file || (d.source.kind === "pdf" && file.mime !== "application/pdf")) {
+        if (
+          !file ||
+          (d.source.kind === "pdf" && file.mime !== "application/pdf")
+        ) {
           res.status(404).json({ error: "Source not found." });
           return;
         }
         sourceName = String(file.name);
-        if(file.mime === "application/pdf")pdf = file.data as Uint8Array;
-        else {sourceText=String(file.extracted_text).slice(0,30000);truncated=String(file.extracted_text).length>30000;}
+        if (file.mime === "application/pdf") {
+          if (file.extracted_text) {
+            const retrieved = retrieveStudyText(
+              String(file.extracted_text),
+              d.prompt,
+            );
+            sourceText = retrieved.text;
+            truncated = retrieved.truncated;
+          } else pdf = file.data as Uint8Array;
+        } else {
+          sourceText = String(file.extracted_text).slice(0, 30000);
+          truncated = String(file.extracted_text).length > 30000;
+        }
       } else {
         const note = db
           .prepare(
@@ -176,7 +240,7 @@ export function aiRoutes(
         sourceText = extracted.text;
         truncated = extracted.truncated;
       }
-      if (d.selection && d.source) sourceText=d.selection;
+      if (d.selection && d.source) sourceText = d.selection;
       if (d.source && !sourceText.trim()) {
         res.status(422).json({
           error:
@@ -185,20 +249,42 @@ export function aiRoutes(
         return;
       }
       const language = d.language === "ar" ? "Arabic" : "English";
-      const target=d.target_language === "ar" ? "Arabic" : d.target_language === "en" ? "English" : language;
+      const target =
+        d.target_language === "ar"
+          ? "Arabic"
+          : d.target_language === "en"
+            ? "English"
+            : language;
       const commands = {
         chat: d.prompt,
         summarize: "Summarize this study source.",
         explain: d.prompt || "Explain this study source clearly with examples.",
         key_concepts:
           "List the key concepts and definitions from this study source.",
-        translate:`Translate the study source into ${target}, preserving meaning and structure. Return only the translation.`,
-        word_insight:`Explain the selected word/phrase in ${target}: translation, pronunciation (phonetic text), contextual meaning, definition and an example.`,
-        definitions:"List key terms with clear definitions and examples.",formula_sheet:"Create a formula sheet with variables, units and conditions of use. Do not invent formulas.",mind_map:"Create a hierarchical mind map as a plain text outline with relationships.",practice_problems:"Create practice problems with worked solutions based on this source.",quick_review:"Create a concise last-minute review checklist based on the source.",
-        flashcards:'Return ONLY JSON: {"kind":"flashcards","title":"Title","cards":[{"front":"Question","back":"Answer","topic":"Topic"}]}. Generate five accurate study cards from the source. No markdown.',
-        quiz:'Return ONLY JSON: {"kind":"quiz","title":"Title","questions":[{"kind":"mcq","prompt":"Question","options":["A","B","C","D"],"correct_answer":"A","explanation":"Reason","topic":"Topic","source":""}]}. Generate five accurate MCQ questions; correct_answer must exactly match an option. No markdown.',
-        mock_exam:'Return ONLY JSON: {"kind":"quiz","title":"Mock exam","questions":[{"kind":"mcq","prompt":"Question","options":["A","B","C","D"],"correct_answer":"A","explanation":"Reason","topic":"Topic","source":""}]}. Generate eight mixed-difficulty MCQ exam questions from the source; answers exactly match options. No markdown.',
-        audio_script:"Write a concise spoken study summary suitable for narration, with no stage directions.",podcast_script:"Write a study podcast dialogue between a teacher and a student based on the source. Use Speaker A: and Speaker B: labels.",reel_script:"Write a 60-second study reel script with an opening hook, three key concepts and a final review question.",video_script:"Write an explainer video script with narration, scene descriptions and examples based on the source.",
+        translate: `Translate the study source into ${target}, preserving meaning and structure. Return only the translation.`,
+        word_insight: `Explain the selected word/phrase in ${target}: translation, pronunciation (phonetic text), contextual meaning, definition and an example.`,
+        definitions: "List key terms with clear definitions and examples.",
+        formula_sheet:
+          "Create a formula sheet with variables, units and conditions of use. Do not invent formulas.",
+        mind_map:
+          "Create a hierarchical mind map as a plain text outline with relationships.",
+        practice_problems:
+          "Create practice problems with worked solutions based on this source.",
+        quick_review:
+          "Create a concise last-minute review checklist based on the source.",
+        flashcards:
+          'Return ONLY JSON: {"kind":"flashcards","title":"Title","cards":[{"front":"Question","back":"Answer","topic":"Topic"}]}. Generate five accurate study cards from the source. No markdown.',
+        quiz: 'Return ONLY JSON: {"kind":"quiz","title":"Title","questions":[{"kind":"mcq","prompt":"Question","options":["A","B","C","D"],"correct_answer":"A","explanation":"Reason","topic":"Topic","source":""}]}. Generate five accurate MCQ questions; correct_answer must exactly match an option. No markdown.',
+        mock_exam:
+          'Return ONLY JSON: {"kind":"quiz","title":"Mock exam","questions":[{"kind":"mcq","prompt":"Question","options":["A","B","C","D"],"correct_answer":"A","explanation":"Reason","topic":"Topic","source":""}]}. Generate eight mixed-difficulty MCQ exam questions from the source; answers exactly match options. No markdown.',
+        audio_script:
+          "Write a concise spoken study summary suitable for narration, with no stage directions.",
+        podcast_script:
+          "Write a study podcast dialogue between a teacher and a student based on the source. Use Speaker A: and Speaker B: labels.",
+        reel_script:
+          "Write a 60-second study reel script with an opening hook, three key concepts and a final review question.",
+        video_script:
+          "Write an explainer video script with narration, scene descriptions and examples based on the source.",
         study_guide:
           "Create a study guide with key concepts and practice questions from this study source.",
       };
@@ -226,8 +312,10 @@ export function aiRoutes(
       const response = await provider.complete(messages);
       if (!response.trim() || response.length > 24000)
         throw new Error("Invalid response");
-      const generated=["flashcards","quiz","mock_exam"].includes(d.action)?parseGeneratedStudy(response,d.action):null;
-      const generatedId=generated?randomUUID():null;
+      const generated = ["flashcards", "quiz", "mock_exam"].includes(d.action)
+        ? parseGeneratedStudy(response, d.action)
+        : null;
+      const generatedId = generated ? randomUUID() : null;
       const id = d.conversation_id || randomUUID(),
         time = new Date().toISOString();
       db.exec("BEGIN");
@@ -256,7 +344,18 @@ export function aiRoutes(
           sourceName,
           time,
         );
-        if(generated)db.prepare("INSERT INTO ai_generations VALUES(?,?,?,?,?,?,NULL,?)").run(generatedId,u,c,d.action,sourceName,JSON.stringify(generated),time);
+        if (generated)
+          db.prepare(
+            "INSERT INTO ai_generations VALUES(?,?,?,?,?,?,NULL,?)",
+          ).run(
+            generatedId,
+            u,
+            c,
+            d.action,
+            sourceName,
+            JSON.stringify(generated),
+            time,
+          );
         db.exec("COMMIT");
       } catch (e) {
         db.exec("ROLLBACK");
@@ -267,7 +366,7 @@ export function aiRoutes(
         response,
         source: sourceName,
         truncated,
-        generated_id:generatedId,
+        generated_id: generatedId,
       });
     } catch {
       res

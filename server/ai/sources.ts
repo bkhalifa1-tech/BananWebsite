@@ -5,10 +5,17 @@ export type ExtractedPDF = {
   processedPages: number;
   truncated: boolean;
 };
-export function extractPdf(data: Uint8Array): Promise<ExtractedPDF> {
+export function extractPdf(
+  data: Uint8Array,
+  options: { maxPages?: number; maxChars?: number } = {},
+): Promise<ExtractedPDF> {
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL("./pdf-extract.mjs", import.meta.url), {
-      workerData: data,
+      workerData: {
+        data,
+        maxPages: Math.min(options.maxPages || 30, 200),
+        maxChars: Math.min(options.maxChars || 30000, 200000),
+      },
     });
     let done = false;
     const finish = (error: Error | null, value?: ExtractedPDF) => {

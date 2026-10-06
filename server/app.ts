@@ -1,3 +1,5 @@
+import { translationRoutes } from "./ai/translation";
+import { socialRoutes } from "./social";
 import { mediaRoutes } from "./ai/media";
 import { generationRoutes } from "./ai/generation";
 import { learningRoutes } from "./learning";
@@ -324,9 +326,36 @@ export function createApp(
     "/api",
     studyRoutes(db, userFor, options.requireVerified ?? production),
   );
-  app.use("/api",mediaRoutes(db,userFor,options.aiProvider===undefined?configuredAI():options.aiProvider,options.requireVerified ?? production));
-  app.use("/api",generationRoutes(db,userFor,options.requireVerified ?? production));
-  app.use("/api",learningRoutes(db,userFor,options.requireVerified ?? production));
+  app.use(
+    "/api",
+    translationRoutes(
+      db,
+      userFor,
+      options.aiProvider === undefined ? configuredAI() : options.aiProvider,
+      options.requireVerified ?? production,
+    ),
+  );
+  app.use(
+    "/api",
+    socialRoutes(db, userFor, options.requireVerified ?? production),
+  );
+  app.use(
+    "/api",
+    mediaRoutes(
+      db,
+      userFor,
+      options.aiProvider === undefined ? configuredAI() : options.aiProvider,
+      options.requireVerified ?? production,
+    ),
+  );
+  app.use(
+    "/api",
+    generationRoutes(db, userFor, options.requireVerified ?? production),
+  );
+  app.use(
+    "/api",
+    learningRoutes(db, userFor, options.requireVerified ?? production),
+  );
   app.use("/api", (_req, res) => {
     res.status(404).json({ error: "Endpoint not found." });
   });

@@ -77,8 +77,10 @@ export function weightedGpa(
   return { value: credits ? total / credits : null, credits };
 }
 
-export function requiredRemainingGrade(summary:GradeSummary,target:number){
- if(!Number.isFinite(target)||target<0||target>100) return null;
- const remaining=100-summary.gradedWeight;
- return remaining>0?(target-summary.earnedContribution)/remaining*100:null;
+export function requiredRemainingGrade(summary: GradeSummary, target: number) {
+  if (!Number.isFinite(target) || target < 0 || target > 100) return null;
+  const remaining = 100 - summary.gradedWeight;
+  return remaining > 0
+    ? ((target - summary.earnedContribution) / remaining) * 100
+    : null;
 }

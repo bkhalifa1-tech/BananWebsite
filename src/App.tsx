@@ -7,6 +7,7 @@ import {
 const PersonalDashboard = lazy(
   () => import("./features/personal/PersonalDashboard"),
 );
+const Social = lazy(() => import("./features/social/Social"));
 const Analytics = lazy(() => import("./features/analytics/Analytics"));
 const Planner = lazy(() => import("./features/planner/Planner"));
 const Focus = lazy(() => import("./features/planner/Focus"));
@@ -14,6 +15,7 @@ const SemesterDashboard = lazy(() => import("./features/semester/Dashboard"));
 import { errorMessage } from "./lib/errors";
 import { useCallback, useEffect, useState } from "react";
 import {
+  Users,
   ArrowRight,
   BookOpen,
   Check,
@@ -59,7 +61,7 @@ export default function App() {
   const [page, setPage] = useState(
     () =>
       window.location.hash.match(
-        /^#\/(focus|planner|analytics|appearance|account)/,
+        /^#\/(focus|planner|analytics|social|appearance|account)/,
       )?.[1] || "overview",
   );
   const [mobile, setMobile] = useState(false);
@@ -75,7 +77,7 @@ export default function App() {
       if (/^#\/(courses|semesters|spaces)\//.test(window.location.hash))
         setPage("overview");
       const p = window.location.hash.match(
-        /^#\/(focus|planner|analytics|appearance|account)/,
+        /^#\/(focus|planner|analytics|social|appearance|account)/,
       )?.[1];
       if (p) setPage(p);
     };
@@ -309,6 +311,12 @@ export default function App() {
               ar: "التحليلات",
             },
             { id: "planner", icon: CalendarDays, en: "Planner", ar: "المخطط" },
+            {
+              id: "social",
+              icon: Users,
+              en: "Study together",
+              ar: "ندرس معًا",
+            },
             { id: "focus", icon: Timer, en: "Focus", ar: "التركيز" },
             { id: "appearance", icon: Palette, en: "Appearance", ar: "المظهر" },
             {
@@ -431,6 +439,11 @@ export default function App() {
         </header>
         <main className="content">
           <EmailStatus account={account} />
+          {page === "social" && (
+            <Suspense fallback={<Skeleton />}>
+              <Social language={prefs.language} userId={account.user.id} />
+            </Suspense>
+          )}
           {page === "analytics" && (
             <Suspense fallback={<Skeleton />}>
               <Analytics track={prefs.track} language={prefs.language} />

@@ -3,7 +3,7 @@ import { fileURLToPath, URL } from "node:url";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 try {
   const task = getDocument({
-    data: new Uint8Array(workerData),
+    data: new Uint8Array(workerData.data),
     isEvalSupported: false,
     standardFontDataUrl: fileURLToPath(
       new URL("../../node_modules/pdfjs-dist/standard_fonts/", import.meta.url),
@@ -16,7 +16,7 @@ try {
   });
   const doc = await task.promise;
   const pages = [];
-  const count = Math.min(doc.numPages, 30);
+  const count = Math.min(doc.numPages, workerData.maxPages);
   let chars = 0;
   for (let i = 1; i <= count; i++) {
     const page = await doc.getPage(i);
@@ -27,13 +27,13 @@ try {
       .join(" ");
     pages.push(`[Page ${i}] ${text}`);
     chars += text.length;
-    if (chars > 30000) break;
+    if (chars > workerData.maxChars) break;
   }
   parentPort.postMessage({
-    text: pages.join("\n").slice(0, 30000),
+    text: pages.join("\n").slice(0, workerData.maxChars),
     pages: doc.numPages,
     processedPages: pages.length,
-    truncated: pages.length < doc.numPages || chars > 30000,
+    truncated: pages.length < doc.numPages || chars > workerData.maxChars,
   });
   await task.destroy();
 } catch {

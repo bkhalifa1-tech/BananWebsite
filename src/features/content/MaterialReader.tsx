@@ -24,8 +24,14 @@ export function MaterialReader({
     [pages, setPages] = useState(0),
     [zoom, setZoom] = useState(1),
     [error, setError] = useState(false);
-  const [text,setText]=useState("");
-  useEffect(()=>{if(material.mime.includes("openxmlformats"))void api<{text:string}>(`/materials/${material.id}/text`).then(d=>setText(d.text)).catch(()=>setError(true));},[material.id,material.mime]);
+  const [text, setText] = useState(""),
+    [pageText, setPageText] = useState("");
+  useEffect(() => {
+    if (material.mime.includes("openxmlformats"))
+      void api<{ text: string }>(`/materials/${material.id}/text`)
+        .then((d) => setText(d.text))
+        .catch(() => setError(true));
+  }, [material.id, material.mime]);
   const t = (e: string, a: string) => (language === "ar" ? a : e);
   const options = useMemo(
     () => ({
@@ -77,6 +83,25 @@ export function MaterialReader({
               ))}
             </select>
           </div>
+          <button
+            className="text-button"
+            disabled={!pageText}
+            onClick={() =>
+              window.dispatchEvent(
+                new CustomEvent("study-selection", {
+                  detail: {
+                    materialId: material.id,
+                    text: pageText.slice(0, 6000),
+                  },
+                }),
+              )
+            }
+          >
+            {t(
+              "Use page text for translation / study",
+              "استخدام نص الصفحة للترجمة / الدراسة",
+            )}
+          </button>
           <div className="pdf-scroll">
             <Document
               suspense={false}
@@ -97,14 +122,34 @@ export function MaterialReader({
                 </p>
               }
             >
-              <PdfStudyTools materialId={material.id} page={page} language={language} onPage={setPage} onSelection={text=>window.dispatchEvent(new CustomEvent("study-selection",{detail:{materialId:material.id,text}}))}>
-              <Page
-                pageNumber={page}
-                width={470}
-                scale={zoom}
-                renderAnnotationLayer={false}
-                loading={<p>{t("Loading page…", "جارٍ تحميل الصفحة…")}</p>}
-              />
+              <PdfStudyTools
+                materialId={material.id}
+                page={page}
+                language={language}
+                onPage={setPage}
+                onSelection={(text) =>
+                  window.dispatchEvent(
+                    new CustomEvent("study-selection", {
+                      detail: { materialId: material.id, text },
+                    }),
+                  )
+                }
+              >
+                <Page
+                  pageNumber={page}
+                  width={470}
+                  scale={zoom}
+                  onGetTextSuccess={(content) =>
+                    setPageText(
+                      content.items
+                        .filter((i) => "str" in i)
+                        .map((i) => ("str" in i ? i.str : ""))
+                        .join(" "),
+                    )
+                  }
+                  renderAnnotationLayer={false}
+                  loading={<p>{t("Loading page…", "جارٍ تحميل الصفحة…")}</p>}
+                />
               </PdfStudyTools>
             </Document>
           </div>
@@ -117,7 +162,32 @@ export function MaterialReader({
             </button>
           )}
         </>
-      ) : material.mime.startsWith("audio/") ? <audio controls preload="metadata" src={url} onError={()=>setError(true)}/> : material.mime.startsWith("video/") ? <video controls preload="metadata" className="material-video" src={url} onError={()=>setError(true)}/> : material.mime.includes("openxmlformats") ? <div className="study-output"><p>{t("Text view. Download the original to see its complete formatting.","عرض نصي. نزّل الأصل لرؤية التنسيق الكامل.")}</p><pre>{text||t("Loading document…","جارٍ تحميل المستند…")}</pre></div> : (
+      ) : material.mime.startsWith("audio/") ? (
+        <audio
+          controls
+          preload="metadata"
+          src={url}
+          onError={() => setError(true)}
+        />
+      ) : material.mime.startsWith("video/") ? (
+        <video
+          controls
+          preload="metadata"
+          className="material-video"
+          src={url}
+          onError={() => setError(true)}
+        />
+      ) : material.mime.includes("openxmlformats") ? (
+        <div className="study-output">
+          <p>
+            {t(
+              "Text view. Download the original to see its complete formatting.",
+              "عرض نصي. نزّل الأصل لرؤية التنسيق الكامل.",
+            )}
+          </p>
+          <pre>{text || t("Loading document…", "جارٍ تحميل المستند…")}</pre>
+        </div>
+      ) : (
         <img
           className="material-image"
           src={url}

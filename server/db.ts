@@ -1,3 +1,5 @@
+import { translationSchema } from "./ai/translation";
+import { socialSchema } from "./social";
 import { mediaSchema } from "./ai/media";
 import { learningSchema } from "./learning";
 import { migrateWorkspaces } from "./workspaces";
@@ -108,6 +110,16 @@ export function openDatabase(path: string) {
   aiSchema(db);
   learningSchema(db);
   mediaSchema(db);
-  if(!db.prepare("PRAGMA table_info(materials)").all().some(c=>c.name==="extracted_text"))db.exec("ALTER TABLE materials ADD COLUMN extracted_text TEXT NOT NULL DEFAULT ''");
+  socialSchema(db);
+  translationSchema(db);
+  if (
+    !db
+      .prepare("PRAGMA table_info(materials)")
+      .all()
+      .some((c) => c.name === "extracted_text")
+  )
+    db.exec(
+      "ALTER TABLE materials ADD COLUMN extracted_text TEXT NOT NULL DEFAULT ''",
+    );
   return db;
 }

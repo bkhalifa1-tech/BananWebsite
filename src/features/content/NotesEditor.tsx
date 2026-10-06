@@ -1,5 +1,7 @@
 import { useEffect, useState, useMemo, useRef } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
+import { MindMap } from "./MindMap";
+import { NoteDrawing } from "./NoteDrawing";
 import { TableKit } from "@tiptap/extension-table";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
@@ -24,10 +26,12 @@ import { errorMessage } from "../../lib/errors";
 import { NoteAutosave, type NoteRecord } from "./NoteAutosave";
 export function NotesEditor({
   note,
+  courseId,
   language,
   onReload,
 }: {
   note: NoteRecord;
+  courseId: string;
   language: "ar" | "en";
   onReload: () => void;
 }) {
@@ -37,8 +41,12 @@ export function NotesEditor({
     [error, setError] = useState(""),
     [link, setLink] = useState(""),
     [linkOpen, setLinkOpen] = useState(false);
+  const [drawingOpen, setDrawingOpen] = useState(false),
+    [mapOpen, setMapOpen] = useState(false),
+    [images, setImages] = useState<{ id: string; name: string }[]>([]);
   const titleRef = useRef(note.title);
-  const [insertKind,setInsertKind]=useState<"math"|"image"|null>(null),[insertValue,setInsertValue]=useState("");
+  const [insertKind, setInsertKind] = useState<"math" | "image" | null>(null),
+    [insertValue, setInsertValue] = useState("");
   const writer = useMemo(
     () =>
       new NoteAutosave(note, (snapshot, version) =>
@@ -48,7 +56,18 @@ export function NotesEditor({
   );
   const editor = useEditor(
     {
-      extensions: [StarterKit, TableKit, TaskList, TaskItem.configure({nested:true}), Highlight.configure({multicolor:true}), TextStyleKit, Image, Mathematics.configure({katexOptions:{throwOnError:false,trust:false}})],
+      extensions: [
+        StarterKit,
+        TableKit,
+        TaskList,
+        TaskItem.configure({ nested: true }),
+        Highlight.configure({ multicolor: true }),
+        TextStyleKit,
+        Image,
+        Mathematics.configure({
+          katexOptions: { throwOnError: false, trust: false },
+        }),
+      ],
       content: note.html,
       editorProps: {
         attributes: {
@@ -83,6 +102,16 @@ export function NotesEditor({
     window.addEventListener("beforeunload", before);
     return () => window.removeEventListener("beforeunload", before);
   }, [writer]);
+  useEffect(() => {
+    if (insertKind === "image")
+      void api<{ materials: { id: string; name: string; mime: string }[] }>(
+        `/courses/${courseId}/content`,
+      )
+        .then((d) =>
+          setImages(d.materials.filter((m) => m.mime.startsWith("image/"))),
+        )
+        .catch((e) => setError(errorMessage(e, language)));
+  }, [insertKind, courseId, language]);
   function rename(value: string) {
     titleRef.current = value;
     setTitle(value);
@@ -172,15 +201,168 @@ export function NotesEditor({
         >
           <Link size={17} />
         </button>
-        <button className="secondary" onClick={()=>editor?.chain().focus().toggleTaskList().run()}>{t("Checklist","قائمة مهام")}</button>
-        <button className="secondary" onClick={()=>editor?.chain().focus().insertTable({rows:3,cols:3,withHeaderRow:true}).run()}>{t("Table","جدول")}</button>
-        {editor?.isActive("table") && <><button className="text-button" onClick={()=>editor.chain().focus().addRowAfter().run()}>{t("Add row","إضافة صف")}</button><button className="text-button" onClick={()=>editor.chain().focus().addColumnAfter().run()}>{t("Add column","إضافة عمود")}</button><button className="text-button" onClick={()=>editor.chain().focus().deleteTable().run()}>{t("Delete table","حذف الجدول")}</button></>}
-        <button className="secondary" onClick={()=>editor?.chain().focus().toggleHighlight().run()}>{t("Highlight","تمييز")}</button>
-        <label>{t("Text color","لون النص")}<input type="color" aria-label={t("Text color","لون النص")} defaultValue="#216348" onChange={e=>editor?.chain().focus().setColor(e.target.value).run()}/></label>
-        <button className="secondary" onClick={()=>{setInsertKind("math");setInsertValue("")}}>{t("Math / LaTeX","معادلة / LaTeX")}</button>
-        <button className="secondary" onClick={()=>{setInsertKind("image");setInsertValue("")}}>{t("Study image","صورة دراسية")}</button>
+        <button
+          className="secondary"
+          onClick={() => editor?.chain().focus().toggleTaskList().run()}
+        >
+          {t("Checklist", "قائمة مهام")}
+        </button>
+        <button
+          className="secondary"
+          onClick={() =>
+            editor
+              ?.chain()
+              .focus()
+              .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
+              .run()
+          }
+        >
+          {t("Table", "جدول")}
+        </button>
+        {editor?.isActive("table") && (
+          <>
+            <button
+              className="text-button"
+              onClick={() => editor.chain().focus().addRowAfter().run()}
+            >
+              {t("Add row", "إضافة صف")}
+            </button>
+            <button
+              className="text-button"
+              onClick={() => editor.chain().focus().addColumnAfter().run()}
+            >
+              {t("Add column", "إضافة عمود")}
+            </button>
+            <button
+              className="text-button"
+              onClick={() => editor.chain().focus().deleteTable().run()}
+            >
+              {t("Delete table", "حذف الجدول")}
+            </button>
+          </>
+        )}
+        <button
+          className="secondary"
+          onClick={() => editor?.chain().focus().toggleHighlight().run()}
+        >
+          {t("Highlight", "تمييز")}
+        </button>
+        <label>
+          {t("Text color", "لون النص")}
+          <input
+            type="color"
+            aria-label={t("Text color", "لون النص")}
+            defaultValue="#216348"
+            onChange={(e) =>
+              editor?.chain().focus().setColor(e.target.value).run()
+            }
+          />
+        </label>
+        <button
+          className="secondary"
+          aria-pressed={drawingOpen}
+          onClick={() => setDrawingOpen(!drawingOpen)}
+        >
+          {t("Drawing / stylus", "رسم / قلم")}
+        </button>
+        <button
+          className="secondary"
+          aria-pressed={mapOpen}
+          onClick={() => setMapOpen(!mapOpen)}
+        >
+          {t("Mind map view", "عرض الخريطة الذهنية")}
+        </button>
+        <button
+          className="secondary"
+          onClick={() => {
+            setInsertKind("math");
+            setInsertValue("");
+          }}
+        >
+          {t("Math / LaTeX", "معادلة / LaTeX")}
+        </button>
+        <button
+          className="secondary"
+          onClick={() => {
+            setInsertKind("image");
+            setInsertValue("");
+          }}
+        >
+          {t("Study image", "صورة دراسية")}
+        </button>
       </div>
-      {insertKind && <form className="link-form" onSubmit={e=>{e.preventDefault();if(insertKind==="math")editor?.chain().focus().insertInlineMath({latex:insertValue}).run();else if(/^\/api\/materials\/[a-f0-9-]{36}\/file$/.test(insertValue))editor?.chain().focus().setImage({src:insertValue,alt:t("Study image","صورة دراسية")}).run();else {setError(t("Use a private study image URL: /api/materials/ID/file","استخدم رابط صورة دراسية خاصة: /api/materials/ID/file"));return;}setInsertKind(null);}}><label>{insertKind==="math"?t("LaTeX expression","صيغة LaTeX"):t("Private image URL (from an uploaded image)","رابط صورة خاصة من الملفات المرفوعة")}<input required maxLength={insertKind==="math"?2000:100} value={insertValue} onChange={e=>setInsertValue(e.target.value)}/></label><button className="secondary">{t("Insert","إدراج")}</button><button type="button" className="text-button" onClick={()=>setInsertKind(null)}>{t("Cancel","إلغاء")}</button></form>}
+      {insertKind && (
+        <form
+          className="link-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (insertKind === "math")
+              editor
+                ?.chain()
+                .focus()
+                .insertInlineMath({ latex: insertValue })
+                .run();
+            else if (
+              /^\/api\/materials\/[a-f0-9-]{36}\/file$/.test(insertValue)
+            )
+              editor
+                ?.chain()
+                .focus()
+                .setImage({
+                  src: insertValue,
+                  alt: t("Study image", "صورة دراسية"),
+                })
+                .run();
+            else {
+              setError(
+                t(
+                  "Use a private study image URL: /api/materials/ID/file",
+                  "استخدم رابط صورة دراسية خاصة: /api/materials/ID/file",
+                ),
+              );
+              return;
+            }
+            setInsertKind(null);
+          }}
+        >
+          <label>
+            {insertKind === "math"
+              ? t("LaTeX expression", "صيغة LaTeX")
+              : t("Uploaded study image", "صورة دراسية مرفوعة")}
+            {insertKind === "math" ? (
+              <input
+                required
+                maxLength={2000}
+                value={insertValue}
+                onChange={(e) => setInsertValue(e.target.value)}
+              />
+            ) : (
+              <select
+                required
+                value={insertValue}
+                onChange={(e) => setInsertValue(e.target.value)}
+              >
+                <option value="">
+                  {t("Choose an uploaded image", "اختر صورة مرفوعة")}
+                </option>
+                {images.map((m) => (
+                  <option key={m.id} value={`/api/materials/${m.id}/file`}>
+                    {m.name}
+                  </option>
+                ))}
+              </select>
+            )}
+          </label>
+          <button className="secondary">{t("Insert", "إدراج")}</button>
+          <button
+            type="button"
+            className="text-button"
+            onClick={() => setInsertKind(null)}
+          >
+            {t("Cancel", "إلغاء")}
+          </button>
+        </form>
+      )}
       {linkOpen && (
         <form
           className="link-form"
@@ -208,6 +390,19 @@ export function NotesEditor({
           />
           <button className="secondary">{t("Apply", "تطبيق")}</button>
         </form>
+      )}
+      {drawingOpen && (
+        <NoteDrawing
+          courseId={courseId}
+          language={language}
+          onInsert={(url) => {
+            editor?.chain().focus().setImage({ src: url }).run();
+            setDrawingOpen(false);
+          }}
+        />
+      )}
+      {mapOpen && editor && (
+        <MindMap doc={editor.getJSON()} language={language} />
       )}
       <EditorContent editor={editor} onBlur={() => void writer.flush()} />
       {error && (

@@ -217,6 +217,7 @@ export default function CourseContent({
       <NotesEditor
         key={note.id + ":" + note.version}
         note={note}
+        courseId={courseId}
         language={language}
         onReload={() => void loadNote(note.id)}
       />
@@ -343,7 +344,7 @@ export default function CourseContent({
               </div>
               <p className="field-hint">
                 {t(
-                  "PDF, PNG and JPEG · up to 10 MB · private to your account",
+                  "PDF, Office, images, audio & video · up to 10 MB · private to your account",
                   "PDF وPNG وJPEG · حتى 10 MB · خاصة بحسابك",
                 )}
               </p>
@@ -359,10 +360,25 @@ export default function CourseContent({
                       >
                         {m.name}
                       </button>
+                      <button
+                        className="text-button"
+                        onClick={() => {
+                          setMaterial(m);
+                          window.dispatchEvent(
+                            new CustomEvent("study-source", {
+                              detail: { id: m.id },
+                            }),
+                          );
+                        }}
+                      >
+                        {t("Study tools", "أدوات الدراسة")}
+                      </button>
                       <small>
                         {m.mime === "application/pdf"
                           ? "PDF"
-                          : m.mime.startsWith("image/")?t("Image", "صورة"):m.name.split(".").at(-1)?.toUpperCase()}{" "}
+                          : m.mime.startsWith("image/")
+                            ? t("Image", "صورة")
+                            : m.name.split(".").at(-1)?.toUpperCase()}{" "}
                         · {(m.size / 1024).toFixed(1)} KB
                       </small>
                       <button
@@ -487,7 +503,14 @@ export default function CourseContent({
           )}
         </>
       )}
-      <LearningStudio key={courseId} courseId={courseId} language={language} materialId={material?.mime === "application/pdf" ? material.id:undefined}/>
+      <LearningStudio
+        key={courseId}
+        courseId={courseId}
+        language={language}
+        materialId={
+          material?.mime === "application/pdf" ? material.id : undefined
+        }
+      />
       {dialog && (
         <Modal
           title={
