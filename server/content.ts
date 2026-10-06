@@ -1,3 +1,4 @@
+import { inspectFile } from "./file-formats";
 import { Router, type Request } from "express";
 import type { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
@@ -40,16 +41,6 @@ export const cleanNote = (html: string) =>
       }),
     },
   });
-function fileKind(buffer: Buffer) {
-  if (buffer.subarray(0, 5).toString() === "%PDF-") return "application/pdf";
-  if (
-    buffer.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
-  )
-    return "image/png";
-  if (buffer[0] === 255 && buffer[1] === 216 && buffer[2] === 255)
-    return "image/jpeg";
-  return null;
-}
 export function contentRoutes(
   db: DatabaseSync,
   userFor: (
@@ -137,17 +128,18 @@ export function contentRoutes(
     }
     res.status(204).end();
   });
-  router.post("/courses/:id/materials", upload.single("file"), (req, res) => {
+  router.post("/courses/:id/materials", upload.single("file"), async (req, res) => {
     const file = req.file;
     if (!file) {
-      res.status(400).json({ error: "Choose a PDF, PNG or JPEG file." });
+      res.status(400).json({ error: "Choose a supported study file." });
       return;
     }
-    const mime = fileKind(file.buffer);
+    let inspected;try{inspected=await inspectFile(file.buffer,file.originalname);}catch{res.status(415).json({error:"This document could not be safely extracted."});return;}
+    const mime = inspected?.mime;
     if (!mime) {
       res
         .status(415)
-        .json({ error: "Only PDF, PNG and JPEG files are supported." });
+        .json({ error: "Supported files: PDF, PNG, JPEG, DOCX, PPTX, MP3, WAV, OGG, M4A, MP4 and WebM." });
       return;
     }
     const folder =
@@ -180,7 +172,7 @@ export function contentRoutes(
         .slice(0, 160) || "Material";
     const id = randomUUID();
     db.prepare(
-      "INSERT INTO materials(id,user_id,course_id,folder_id,name,mime,size,data) VALUES(?,?,?,?,?,?,?,?)",
+      "INSERT INTO materials(id,user_id,course_id,folder_id,name,mime,size,data,extracted_text) VALUES(?,?,?,?,?,?,?,?,?)",
     ).run(
       id,
       res.locals.userId,
@@ -190,11 +182,13 @@ export function contentRoutes(
       mime,
       file.size,
       file.buffer,
+      inspected?.text||"",
     );
     res
       .status(201)
       .json({ id, name, mime, size: file.size, folder_id: folder });
   });
+  router.get("/materials/:id/text",(req,res)=>{const f=db.prepare("SELECT extracted_text FROM materials WHERE id=? AND user_id=?").get(req.params.id,res.locals.userId);if(!f){res.status(404).json({error:"Material not found."});return;}res.json({text:f.extracted_text});});
   router.get("/materials/:id/file", (req, res) => {
     const file = db
       .prepare("SELECT name,mime,data FROM materials WHERE id=? AND user_id=?")
@@ -209,7 +203,10 @@ export function contentRoutes(
       "Content-Security-Policy": "default-src 'none'; sandbox",
       "Cross-Origin-Resource-Policy": "same-origin",
     });
-    res.send(Buffer.from(file.data as Uint8Array));
+    const data=Buffer.from(file.data as Uint8Array);res.set("Accept-Ranges","bytes");
+    const range=req.get("range");
+    if(range){const match=/^bytes=(\d+)-(\d*)$/.exec(range);if(!match){res.status(416).set("Content-Range",`bytes */${data.length}`).end();return;}const start=Number(match[1]),end=match[2]?Math.min(Number(match[2]),data.length-1):data.length-1;if(start>=data.length||end<start){res.status(416).set("Content-Range",`bytes */${data.length}`).end();return;}res.status(206).set("Content-Range",`bytes ${start}-${end}/${data.length}`).send(data.subarray(start,end+1));return;}
+    res.send(data);
   });
   router.delete("/materials/:id", (req, res) => {
     const r = db

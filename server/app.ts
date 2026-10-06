@@ -1,3 +1,4 @@
+import { mediaRoutes } from "./ai/media";
 import { generationRoutes } from "./ai/generation";
 import { learningRoutes } from "./learning";
 import { personalRoutes } from "./personal";
@@ -323,6 +324,7 @@ export function createApp(
     "/api",
     studyRoutes(db, userFor, options.requireVerified ?? production),
   );
+  app.use("/api",mediaRoutes(db,userFor,options.aiProvider===undefined?configuredAI():options.aiProvider,options.requireVerified ?? production));
   app.use("/api",generationRoutes(db,userFor,options.requireVerified ?? production));
   app.use("/api",learningRoutes(db,userFor,options.requireVerified ?? production));
   app.use("/api", (_req, res) => {

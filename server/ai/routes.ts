@@ -27,7 +27,7 @@ const requestSchema = z
     language: z.enum(["ar", "en"]),
     conversation_id: z.string().uuid().nullable().default(null),
     source: z
-      .object({ kind: z.enum(["pdf", "note"]), id: z.string().uuid() })
+      .object({ kind: z.enum(["pdf", "note", "document"]), id: z.string().uuid() })
       .strict()
       .nullable()
       .default(null),
@@ -62,6 +62,7 @@ export function aiRoutes(
             "SELECT id,title,'note' AS kind FROM notes WHERE course_id=? AND user_id=?",
           )
           .all(res.locals.courseId, res.locals.userId),
+        ...db.prepare("SELECT id,name AS title,'document' AS kind FROM materials WHERE course_id=? AND user_id=? AND mime!='application/pdf' AND extracted_text!=''").all(res.locals.courseId,res.locals.userId),
       ],
     }),
   );
@@ -122,18 +123,19 @@ export function aiRoutes(
     // Ownership is checked before parsing or making a paid external request.
     let pdf: Uint8Array | undefined;
     if (d.source) {
-      if (d.source.kind === "pdf") {
+      if (d.source.kind !== "note") {
         const file = db
           .prepare(
-            "SELECT name,data FROM materials WHERE id=? AND user_id=? AND course_id=? AND mime='application/pdf'",
+            "SELECT name,data,mime,extracted_text FROM materials WHERE id=? AND user_id=? AND course_id=?",
           )
           .get(d.source.id, u, c);
-        if (!file) {
+        if (!file || (d.source.kind === "pdf" && file.mime !== "application/pdf")) {
           res.status(404).json({ error: "Source not found." });
           return;
         }
         sourceName = String(file.name);
-        pdf = file.data as Uint8Array;
+        if(file.mime === "application/pdf")pdf = file.data as Uint8Array;
+        else {sourceText=String(file.extracted_text).slice(0,30000);truncated=String(file.extracted_text).length>30000;}
       } else {
         const note = db
           .prepare(

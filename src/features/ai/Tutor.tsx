@@ -6,7 +6,7 @@ import { Card } from "../../components/ui";
 type Data = {
   enabled: boolean;
   conversations: { id: string; title: string }[];
-  sources: { id: string; title: string; kind: "pdf" | "note" }[];
+  sources: { id: string; title: string; kind: "pdf" | "note" | "document" }[];
 };
 type Message = { id: string; role: string; content: string; source: string };
 export default function Tutor({

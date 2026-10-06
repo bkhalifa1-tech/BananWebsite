@@ -1,5 +1,6 @@
 import { PdfStudyTools } from "./PdfStudyTools";
-import { useState, useMemo } from "react";
+import { api } from "../../lib/api";
+import { useState, useMemo, useEffect } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import "react-pdf/dist/Page/TextLayer.css";
@@ -23,6 +24,8 @@ export function MaterialReader({
     [pages, setPages] = useState(0),
     [zoom, setZoom] = useState(1),
     [error, setError] = useState(false);
+  const [text,setText]=useState("");
+  useEffect(()=>{if(material.mime.includes("openxmlformats"))void api<{text:string}>(`/materials/${material.id}/text`).then(d=>setText(d.text)).catch(()=>setError(true));},[material.id,material.mime]);
   const t = (e: string, a: string) => (language === "ar" ? a : e);
   const options = useMemo(
     () => ({
@@ -114,7 +117,7 @@ export function MaterialReader({
             </button>
           )}
         </>
-      ) : (
+      ) : material.mime.startsWith("audio/") ? <audio controls preload="metadata" src={url} onError={()=>setError(true)}/> : material.mime.startsWith("video/") ? <video controls preload="metadata" className="material-video" src={url} onError={()=>setError(true)}/> : material.mime.includes("openxmlformats") ? <div className="study-output"><p>{t("Text view. Download the original to see its complete formatting.","عرض نصي. نزّل الأصل لرؤية التنسيق الكامل.")}</p><pre>{text||t("Loading document…","جارٍ تحميل المستند…")}</pre></div> : (
         <img
           className="material-image"
           src={url}
@@ -124,7 +127,7 @@ export function MaterialReader({
       )}{" "}
       {error && material.mime !== "application/pdf" && (
         <p role="alert">
-          {t("This image could not be displayed.", "تعذر عرض الصورة.")}
+          {t("This file could not be displayed.", "تعذر عرض الملف.")}
         </p>
       )}
     </div>

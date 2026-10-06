@@ -333,7 +333,7 @@ export default function CourseContent({
                   ref={fileRef}
                   className="sr-only"
                   type="file"
-                  accept="application/pdf,image/png,image/jpeg"
+                  accept=".pdf,.png,.jpg,.jpeg,.docx,.pptx,.mp3,.wav,.ogg,.opus,.m4a,.mp4,.webm"
                   aria-label={t("Upload material", "رفع مادة دراسية")}
                   onChange={(e) => {
                     const file = e.target.files?.[0];
@@ -362,7 +362,7 @@ export default function CourseContent({
                       <small>
                         {m.mime === "application/pdf"
                           ? "PDF"
-                          : t("Image", "صورة")}{" "}
+                          : m.mime.startsWith("image/")?t("Image", "صورة"):m.name.split(".").at(-1)?.toUpperCase()}{" "}
                         · {(m.size / 1024).toFixed(1)} KB
                       </small>
                       <button
